@@ -1,0 +1,58 @@
+# Use an official CUDA development image
+FROM nvidia/cuda:11.8.0-devel-ubuntu20.04
+
+
+# Install Miniconda to manage Python environments
+RUN apt-get update && apt-get install -y wget && \
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh && \
+    bash /miniconda.sh -b -p /miniconda && \
+    rm /miniconda.sh
+
+# Add conda to PATH
+ENV PATH="/miniconda/bin:${PATH}"
+
+# Install necessary operating system packages
+RUN apt-get install -y build-essential git
+
+# Set up the conda environment
+RUN conda create -n umamba python=3.10 -y
+SHELL ["conda", "run", "-n", "umamba", "/bin/bash", "-c"]
+
+# Install PyTorch with specific CUDA version
+#RUN conda install -n umamba pytorch torchvision torchaudio cudatoolkit=11.8 cudnn -c pytorch -c nvidia
+RUn pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu118
+
+
+# Install the packaging module needed by causal-conv1d
+RUN pip install packaging
+
+# Install additional Python packages
+RUN pip install causal-conv1d>=1.2.0
+RUN pip install mamba-ssm --no-cache-dir
+
+# Clone the necessary repository
+RUN git clone https://github.com/bowang-lab/U-Mamba /U-Mamba
+WORKDIR /U-Mamba/umamba
+
+# Install the project requirements
+RUN pip install -e .
+
+# Set the working directory and the environment
+WORKDIR /U-Mamba
+
+ARG resources="/U-Mamba/data"
+ENV nnUNet_raw=$resources"/nnUNet_raw" nnUNet_preprocessed=$resources"/nnUNet_preprocessed" nnUNet_results=$resources"/nnUNet_results"
+#export LD_LIBRARY_PATH=/miniconda/envs/umamba/lib:$LD_LIBRARY_PATH
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y ffmpeg libsm6 libxext6 && \
+    rm -rf /var/lib/apt/lists/* 
+ENV DEBIAN_FRONTEND=
+
+
+# Create an entry point script
+# After the last RUN command, add:
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
